@@ -1,0 +1,17 @@
+node_modules/
+.DS_Store
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+.idea/
+*.iml
+
+# Generated platform folders (create with flutter create)
+app/android/.gradle/
+app/android/local.properties
+app/linux/flutter/ephemeral/
+app/windows/flutter/ephemeral/
+app/macos/Flutter/ephemeral/
