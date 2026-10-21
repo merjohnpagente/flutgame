@@ -1,20 +1,25 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'arena_painter.dart';
+import 'glass.dart';
 import 'joystick.dart';
 import 'model.dart';
 import 'net.dart';
+import 'session.dart';
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, required this.name, required this.serverUrl});
+  const GameScreen({super.key, required this.name, this.serverUrl});
 
   final String name;
-  final String serverUrl;
+
+  /// Null starts a solo offline run; otherwise connects to a co-op server.
+  final String? serverUrl;
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -22,12 +27,15 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen>
     with SingleTickerProviderStateMixin {
-  late final GameConnection _connection;
+  late final GameSession _session;
   late final Ticker _ticker;
+
+  bool get _offline => widget.serverUrl == null;
 
   final Map<String, Offset> _positions = {};
   final Map<String, double> _hitFlash = {};
   final Set<LogicalKeyboardKey> _keys = {};
+  Map<String, ui.Image> _sprites = const {};
 
   Snapshot? _snapshot;
   String? _selfId;
@@ -41,24 +49,28 @@ class _GameScreenState extends State<GameScreen>
   @override
   void initState() {
     super.initState();
-    _connection = GameConnection(widget.serverUrl);
+    _session = widget.serverUrl == null
+        ? LocalSession()
+        : GameConnection(widget.serverUrl!);
     _ticker = createTicker(_onFrame)..start();
+    unawaited(_loadSprites());
     _inputTimer = Timer.periodic(
       const Duration(milliseconds: 100),
       (_) => _sendInput(),
     );
     _timeout = Timer(const Duration(seconds: 7), () {
       if (!mounted || _snapshot != null || _error != null) return;
-      setState(() => _error =
-          'No state from the server. Check the address and that the server is running.');
-      unawaited(_connection.close());
+      setState(() => _error = _offline
+          ? 'The run did not start.'
+          : 'No state from the server. Check the address and that the server is running.');
+      unawaited(_session.close());
     });
     unawaited(_connect());
   }
 
   Future<void> _connect() async {
     try {
-      await _connection.connect(
+      await _session.connect(
         name: widget.name,
         onWelcome: (id, _) {
           if (!mounted) return;
@@ -68,18 +80,51 @@ class _GameScreenState extends State<GameScreen>
         onError: (message) {
           if (!mounted) return;
           setState(() => _error = message);
-          unawaited(_connection.close());
+          unawaited(_session.close());
         },
         onClosed: () {
           if (!mounted) return;
           setState(() => _error ??= 'Disconnected from the server');
-          unawaited(_connection.close());
+          unawaited(_session.close());
         },
       );
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = _friendly(error));
     }
+  }
+
+  Future<void> _loadSprites() async {
+    const names = [
+      'hero_gold',
+      'hero_blue',
+      'hero_green',
+      'hero_purple',
+      'slime',
+    ];
+    final loaded = <String, ui.Image>{};
+    for (final name in names) {
+      try {
+        final data = await rootBundle.load('assets/characters/$name.png');
+        final bytes = data.buffer.asUint8List(
+          data.offsetInBytes,
+          data.lengthInBytes,
+        );
+        final codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        loaded[name] = frame.image;
+        codec.dispose();
+      } catch (_) {
+        // Keep the painted fallback if an asset cannot be decoded.
+      }
+    }
+    if (!mounted) {
+      for (final image in loaded.values) {
+        image.dispose();
+      }
+      return;
+    }
+    setState(() => _sprites = loaded);
   }
 
   void _apply(Snapshot snapshot) {
@@ -172,7 +217,7 @@ class _GameScreenState extends State<GameScreen>
 
   void _sendInput() {
     final direction = _direction;
-    _connection.sendInput(direction.dx, direction.dy);
+    _session.sendInput(direction.dx, direction.dy);
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -202,7 +247,10 @@ class _GameScreenState extends State<GameScreen>
     _timeout?.cancel();
     _inputTimer?.cancel();
     _ticker.dispose();
-    unawaited(_connection.close());
+    for (final image in _sprites.values) {
+      image.dispose();
+    }
+    unawaited(_session.close());
     super.dispose();
   }
 
@@ -222,7 +270,15 @@ class _GameScreenState extends State<GameScreen>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              const ColoredBox(color: Color(0xFF08080C)),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(0, -0.2),
+                    radius: 1.1,
+                    colors: [Color(0xFF1B1730), Color(0xFF08080C)],
+                  ),
+                ),
+              ),
               if (snapshot != null)
                 Positioned.fill(
                   child: Center(
@@ -235,6 +291,7 @@ class _GameScreenState extends State<GameScreen>
                           selfId: _selfId,
                           hitFlash: _hitFlash,
                           hurt: _hurt,
+                          sprites: _sprites,
                         ),
                         child: const SizedBox.expand(),
                       ),
@@ -266,11 +323,19 @@ class _GameScreenState extends State<GameScreen>
                   right: 24,
                   bottom: 24,
                   child: IgnorePointer(
-                    child: Text(
-                      'Drag / WASD to move · auto-attack',
-                      style: TextStyle(
-                        color: Colors.white.withAlpha(80),
-                        fontSize: 12,
+                    child: GlassPanel(
+                      radius: 12,
+                      blur: 8,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      child: Text(
+                        'Drag / WASD to move · auto-attack',
+                        style: TextStyle(
+                          color: Colors.white.withAlpha(110),
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
@@ -288,7 +353,9 @@ class _GameScreenState extends State<GameScreen>
                         const Text('Entering the dungeon…'),
                         const SizedBox(height: 6),
                         Text(
-                          widget.serverUrl,
+                          _offline
+                              ? 'Solo run · no server needed'
+                              : widget.serverUrl!,
                           style: const TextStyle(
                             color: Colors.white38,
                             fontSize: 12,
@@ -344,15 +411,7 @@ class _GameScreenState extends State<GameScreen>
   }
 
   Widget _panel({required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xCC111118),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x22FFFFFF)),
-      ),
-      child: child,
-    );
+    return GlassPanel(radius: 14, blur: 10, child: child);
   }
 
   Widget _wavePanel(Snapshot snapshot) {
@@ -380,7 +439,7 @@ class _GameScreenState extends State<GameScreen>
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
           Text(
-            'Best ${snapshot.best}',
+            'Best ${snapshot.best} · ${_offline ? 'Solo' : 'Co-op'}',
             style: const TextStyle(color: Color(0xFFE0A94A), fontSize: 12),
           ),
         ],
@@ -402,7 +461,7 @@ class _GameScreenState extends State<GameScreen>
           children: [
             Text(
               me.dead
-                  ? 'DOWN · revives next wave'
+                  ? (_offline ? 'DOWN' : 'DOWN · revives next wave')
                   : 'HP ${me.hp.round()} / ${me.maxHp.round()}',
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
@@ -423,13 +482,16 @@ class _GameScreenState extends State<GameScreen>
   }
 
   Widget _leaveButton() {
-    return IconButton(
-      tooltip: 'Leave',
-      onPressed: () => Navigator.of(context).pop(),
-      style: IconButton.styleFrom(
-        backgroundColor: const Color(0xCC111118),
+    return GlassPanel(
+      radius: 22,
+      blur: 10,
+      padding: EdgeInsets.zero,
+      child: IconButton(
+        tooltip: 'Leave',
+        onPressed: () => Navigator.of(context).pop(),
+        style: IconButton.styleFrom(backgroundColor: Colors.transparent),
+        icon: const Icon(Icons.close),
       ),
-      icon: const Icon(Icons.close),
     );
   }
 

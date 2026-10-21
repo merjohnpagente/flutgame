@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -14,6 +15,7 @@ class ArenaPainter extends CustomPainter {
     required this.selfId,
     required this.hitFlash,
     required this.hurt,
+    this.sprites = const {},
   });
 
   final Snapshot snapshot;
@@ -21,6 +23,7 @@ class ArenaPainter extends CustomPainter {
   final String? selfId;
   final Map<String, double> hitFlash;
   final double hurt;
+  final Map<String, ui.Image> sprites;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -60,17 +63,33 @@ class ArenaPainter extends CustomPainter {
       final position = positions[enemy.id];
       if (position == null) continue;
       final flash = hitFlash[enemy.id] ?? 0;
-      final color = Color.lerp(
-        const Color(0xFFE05252),
-        Colors.white,
-        (flash / 0.18).clamp(0.0, 1.0).toDouble(),
-      )!;
-      canvas.drawCircle(position, 15, Paint()..color = color);
-      canvas.drawCircle(
-        position + const Offset(0, -4),
-        5,
-        Paint()..color = const Color(0x33000000),
-      );
+      final sprite = sprites['slime'];
+      if (sprite == null) {
+        final color = Color.lerp(
+          const Color(0xFFE05252),
+          Colors.white,
+          (flash / 0.18).clamp(0.0, 1.0).toDouble(),
+        )!;
+        canvas.drawCircle(position, 15, Paint()..color = color);
+        canvas.drawCircle(
+          position + const Offset(0, -4),
+          5,
+          Paint()..color = const Color(0x33000000),
+        );
+      } else {
+        _drawSprite(canvas, sprite, position, 38);
+        if (flash > 0) {
+          canvas.drawCircle(
+            position,
+            20,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.5
+              ..color = Colors.white
+                  .withAlpha((flash / 0.18 * 220).clamp(0, 255).round()),
+          );
+        }
+      }
       if (enemy.hp < enemy.maxHp) {
         _bar(
           canvas,
@@ -85,23 +104,28 @@ class ArenaPainter extends CustomPainter {
     for (final player in snapshot.players) {
       final position = positions[player.id];
       if (position == null) continue;
-      final color = _playerColor(player.id, player.dead);
+      final sprite = sprites[_heroSprite(player.id)];
+      if (sprite == null) {
+        final color = _playerColor(player.id, player.dead);
+        canvas.drawCircle(position, 16, Paint()..color = color);
+        canvas.drawCircle(
+          position + const Offset(0, -4),
+          6,
+          Paint()..color = const Color(0x44000000),
+        );
+      } else {
+        _drawSprite(canvas, sprite, position, 46, dead: player.dead);
+      }
       if (player.id == selfId) {
         canvas.drawCircle(
           position,
-          21,
+          25,
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2
             ..color = const Color(0xCCFFFFFF),
         );
       }
-      canvas.drawCircle(position, 16, Paint()..color = color);
-      canvas.drawCircle(
-        position + const Offset(0, -4),
-        6,
-        Paint()..color = const Color(0x44000000),
-      );
 
       final label = TextPainter(
         text: TextSpan(
@@ -138,6 +162,34 @@ class ArenaPainter extends CustomPainter {
               .withAlpha((hurt / 0.4 * 70).clamp(0, 255).round()),
       );
     }
+  }
+
+  void _drawSprite(
+    Canvas canvas,
+    ui.Image image,
+    Offset center,
+    double size, {
+    bool dead = false,
+  }) {
+    final paint = Paint()..filterQuality = ui.FilterQuality.medium;
+    if (dead) {
+      paint.colorFilter = ColorFilter.mode(
+        const Color(0xFF555566),
+        BlendMode.srcATop,
+      );
+    }
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Rect.fromCenter(center: center, width: size, height: size),
+      paint,
+    );
+  }
+
+  String _heroSprite(String id) {
+    const heroes = ['hero_gold', 'hero_blue', 'hero_green', 'hero_purple'];
+    if (id == selfId) return heroes.first;
+    return heroes[id.hashCode.abs() % heroes.length];
   }
 
   void _bar(

@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 class Joystick extends StatefulWidget {
@@ -48,7 +50,26 @@ class _JoystickState extends State<Joystick> {
         child: SizedBox(
           width: _size,
           height: _size,
-          child: CustomPaint(painter: _JoystickPainter(_input)),
+          child: ClipOval(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0x24FFFFFF), Color(0x08FFFFFF)],
+                  ),
+                  border: Border.all(
+                    color: const Color(0x3DFFFFFF),
+                    width: 1.5,
+                  ),
+                ),
+                child: CustomPaint(painter: _JoystickPainter(_input)),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -63,25 +84,23 @@ class _JoystickPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
-    final radius = size.width / 2 - 2;
-    canvas.drawCircle(center, radius, Paint()..color = const Color(0x55101018));
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = const Color(0x55FFFFFF),
-    );
+    canvas.drawCircle(center, 3, Paint()..color = const Color(0x55FFFFFF));
+
     final knob = center + input * _JoystickState._radius;
-    canvas.drawCircle(knob, 22, Paint()..color = const Color(0xCCE0A94A));
+    canvas.drawCircle(knob, 25, Paint()..color = const Color(0x33E0A94A));
+    canvas.drawCircle(knob, 20, Paint()..color = const Color(0xE6E0A94A));
     canvas.drawCircle(
       knob,
-      22,
+      20,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = const Color(0xAAFFFFFF),
+        ..strokeWidth = 1.5
+        ..color = const Color(0xCCFFFFFF),
+    );
+    canvas.drawCircle(
+      knob + const Offset(-6, -6),
+      5,
+      Paint()..color = const Color(0x66FFFFFF),
     );
   }
 

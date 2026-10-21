@@ -34,7 +34,20 @@ class DungeonApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: const Color(0xFF0D0D14),
         inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(),
+          filled: true,
+          fillColor: const Color(0x14FFFFFF),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0x33FFFFFF)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0x33FFFFFF)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFE0A94A), width: 1.5),
+          ),
         ),
       ),
       home: const JoinScreen(),

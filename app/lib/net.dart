@@ -4,8 +4,9 @@ import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'model.dart';
+import 'session.dart';
 
-class GameConnection {
+class GameConnection implements GameSession {
   GameConnection(this.url);
 
   final String url;
@@ -13,6 +14,7 @@ class GameConnection {
   StreamSubscription<dynamic>? _subscription;
   bool _closed = false;
 
+  @override
   Future<void> connect({
     required String name,
     required void Function(String id, int best) onWelcome,
@@ -82,6 +84,7 @@ class GameConnection {
     _channel!.sink.add(jsonEncode({'t': 'join', 'name': name}));
   }
 
+  @override
   void sendInput(double x, double y) {
     final channel = _channel;
     if (channel == null || _closed) return;
@@ -96,6 +99,7 @@ class GameConnection {
     }
   }
 
+  @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
